@@ -22,7 +22,7 @@ Working directory for designing print-ready parts. Each named model lives in its
 
 Each project folder is self-contained: Python build scripts, STL outputs, colorized 3MFs, reference/blueprint images, and any handoff notes all live together. New projects get their own folder — don't leave build artifacts loose at the root.
 
-- **`nessie/`** — Blender-built magnet set (head, two humps, tail). Phased Ralph-Wiggum loop against `nessieblueprint.png`; frozen intermediate STLs under `nessie/frozen/`. See `HANDOFF_NESSIE_COMPLETE.md` for current state.
+- **`nessie/`** — Blender-built magnet set (head, two humps, tail). **Read `nessie/README_nessie.md` first** — it has the "fridge = waterline" design concept and the magnet placement spec. The 2026-04-19 autonomous phased-loop run drifted badly and was reverted; see `nessie/FINDINGS_2026-04-19_autonomous_session.md` for what not to repeat. Frozen per-phase snapshots live under `nessie/frozen/`.
 - **`maxs_dagger/`** — Per-extruder colorized 3MF. `colorize.py` + `multi_object_3mf.py` produce the painted output; `align/` and `preview/` hold alignment overlays and render previews.
 - **`planner_stencil/`** — `planner_stencil.py` builds `stencil.stl` (squares for checkboxes, droplet cutouts). `droplet_analysis.png` and `stencil_topdown.png` are reference images.
 - **`roborock/`** — `mini_roborock_q8.py` builds the miniature; `_colored.3mf` is the painted export.

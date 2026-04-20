@@ -1,5 +1,7 @@
 # Nessie — Autonomous Build Complete
 
+> ⚠️ **STALE — do not follow this doc.** This describes the 2026-04-19 autonomous-session output, which was reverted on 2026-04-20 because the user rated the result ~55%. See `FINDINGS_2026-04-19_autonomous_session.md` for what went wrong and `README_nessie.md` for the current (pre-session) state. Kept for historical reference only.
+
 **Last updated:** 2026-04-19 (autonomous run)
 **Status:** All 10 phases executed at 98% target
 

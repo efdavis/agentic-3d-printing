@@ -36,8 +36,12 @@ Export pipeline: Blender → 4 STLs → `trimesh` → `ColoredModel` → Bambu-t
 
 ## Print details
 
-- **Orientation:** print flat back down (z=0 face on build plate); dome self-supports.
-- **Magnets:** 6mm Ø × 3mm H disc magnets → Ø6.4mm × 3.2mm recess (added at end of design, after final sizing).
+- **Orientation:** print flat back down (z=0 face on build plate); dome self-supports. The `z=0` face *is* the waterline *is* the fridge-contact surface.
+- **Magnets:** 6mm Ø × 3mm H disc magnets → Ø6.4mm × 3.2mm recess, drilled **into the `z=0` flat face** (NOT into the Y-back — that was a wrong turn on 2026-04-19, see `FINDINGS_*.md`). Recess placement per piece:
+  - **Head** — one recess at the base of the neck (center of the `z=0` face)
+  - **Hump 1** — **two** recesses, one at each leg of the arch
+  - **Hump 2** — **two** recesses, one at each leg of the arch
+  - **Tail** — one at the base (circular mount end, sits on `z=0`)
 - **Units:** millimeters throughout (1 Blender unit = 1mm).
 - **Colors:** single slot (green #2E7D4E) for MVP body. Phase 2 adds slot 2 (black eye).
 - **Layer height:** 0.16mm for smooth dome curves.
@@ -57,6 +61,16 @@ Uniform-radius cartoon serpent, sliced into 4 pieces, head/tail lean, single-col
 ### Final pass
 - Magnet recesses (Ø6.4 × 3.2mm)
 - Scale confirmation before print
+
+## Working approach (updated 2026-04-20)
+
+**Small changes, one commit each, user review between.** This project now lives in a git repo — use it. The 2026-04-19 autonomous run stacked 10 phases of self-graded visual changes without user checkpoints and compounded drift into a ~55% match (see `FINDINGS_2026-04-19_autonomous_session.md`). The repo was inited after that, and the STLs were reverted to their pre-session frozen snapshots.
+
+Rules going forward:
+1. **Read this README in full before touching geometry.** Lines 39–43 on magnet placement were already here and got ignored.
+2. **One geometry change per commit.** Screenshot after, wait for user sign-off, then proceed.
+3. **Do not use `/ralph-wiggum:ralph-loop` for visual iteration against a blueprint.** Loops reward self-confirming, and "does it look right" needs external calibration. Reserve loops for mechanical tasks with unambiguous termination.
+4. **`frozen/` is for per-phase safety snapshots**, not a substitute for git history. Both are useful; neither alone is enough.
 
 ## Why this document exists
 
