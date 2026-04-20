@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>STL / 3MF Viewer</title>
+<style>
+  body { margin: 0; background: #2a2a2a; overflow: hidden; }
+  canvas { display: block; }
+  #info {
+    position: absolute; top: 10px; left: 10px;
+    color: #ccc; font: 14px monospace;
+    background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 4px;
+    max-width: 380px;
+  }
+  .swatch {
+    display: inline-block; width: 10px; height: 10px;
+    border: 1px solid #555; margin-right: 4px; vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+<div id="info">Loading...</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2a2a2a);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight1.position.set(50, 80, 50); dirLight1.castShadow = true; scene.add(dirLight1);
+const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+dirLight2.position.set(-30, 40, -20); scene.add(dirLight2);
+const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.2);
+dirLight3.position.set(0, -20, 50); scene.add(dirLight3);
+
+// Ground plane + grid
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(200, 200),
+  new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.8, metalness: 0.2 })
+);
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.1; ground.receiveShadow = true;
+scene.add(ground);
+scene.add(new THREE.GridHelper(200, 20, 0x555555, 0x444444));
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.05;
+
+// Default palette for paint_color indexing — matches BambuStudio CONST_FILAMENTS table.
+// Values are hex-reversed bit-packed subdivision codes. Index in this list = AMS slot (1-based),
+// "" slot 0 = default (no paint_color attr).
+const CONST_FILAMENTS = [
+  "",   "4",  "8",  "0C", "1C", "2C", "3C", "4C", "5C", "6C", "7C", "8C",
+  "9C", "AC", "BC", "CC", "DC", "EC", "0FC", "1FC", "2FC", "3FC", "4FC",
+  "5FC", "6FC", "7FC", "8FC", "9FC", "AFC", "BFC", "CFC", "DFC", "EFC",
+];
+// Fallback palette if project_settings isn't available
+const DEFAULT_PALETTE = [
+  "#E8E8E8", "#C82828", "#1F7A4C", "#F0B020",
+  "#6A2A8C", "#2E6ABF", "#C8884E", "#555555",
+];
+
+const params = new URLSearchParams(window.location.search);
+const file = params.get('file') || 'mini_roborock_q8.stl';
+
+function setInfo(html) { document.getElementById('info').innerHTML = html; }
+
+function fitCameraToObject(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  object.position.set(
+    object.position.x - center.x,
+    object.position.y - box.min.y,
+    object.position.z - center.z
+  );
+  const maxDim = Math.max(size.x, size.y, size.z);
+  camera.position.set(maxDim * 1.2, maxDim * 0.8, maxDim * 1.2);
+  controls.target.set(0, size.y / 2, 0);
+  controls.update();
+  return { size, center };
+}
+
+// ---------- STL path ----------
+async function loadSTL(url) {
+  const loader = new STLLoader();
+  loader.load(url, function(geometry) {
+    geometry.computeVertexNormals();
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xe8e8e8, roughness: 0.4, metalness: 0.1, flatShading: false
+    });
+    const stlMesh = new THREE.Mesh(geometry, material);
+    stlMesh.castShadow = true; stlMesh.receiveShadow = true;
+    stlMesh.rotation.x = -Math.PI / 2;
+    stlMesh.updateMatrixWorld(true);
+    scene.add(stlMesh);
+    const { size } = fitCameraToObject(stlMesh);
+    setInfo(`${url}<br>${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)} mm<br>${geometry.attributes.position.count / 3} triangles`);
+    window._stlLoaded = true;
+    window._stlSize = { x: size.x, y: size.y, z: size.z };
+  }, undefined, function(error) {
+    setInfo('Error loading STL: ' + error.message);
+  });
+}
+
+// ---------- 3MF path ----------
+function parseMeshXML(xmlText) {
+  // Pull vertices and triangles out of a 3MF .model file.
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  const verts = [];
+  for (const v of doc.getElementsByTagName('vertex')) {
+    verts.push(
+      parseFloat(v.getAttribute('x')),
+      parseFloat(v.getAttribute('y')),
+      parseFloat(v.getAttribute('z'))
+    );
+  }
+  const indices = [];
+  const paintCodes = [];
+  for (const t of doc.getElementsByTagName('triangle')) {
+    indices.push(
+      parseInt(t.getAttribute('v1')),
+      parseInt(t.getAttribute('v2')),
+      parseInt(t.getAttribute('v3'))
+    );
+    paintCodes.push(t.getAttribute('paint_color') || '');
+  }
+  return { verts, indices, paintCodes };
+}
+
+function buildGeometry(verts, indices, colorsPerTri) {
+  const pos = new Float32Array(indices.length * 3);
+  for (let i = 0; i < indices.length; i++) {
+    const vi = indices[i] * 3;
+    pos[i * 3]     = verts[vi];
+    pos[i * 3 + 1] = verts[vi + 1];
+    pos[i * 3 + 2] = verts[vi + 2];
+  }
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  if (colorsPerTri) {
+    const colors = new Float32Array(indices.length * 3);
+    for (let t = 0; t < colorsPerTri.length; t++) {
+      const [r, g, b] = colorsPerTri[t];
+      for (let k = 0; k < 3; k++) {
+        colors[(t * 3 + k) * 3]     = r;
+        colors[(t * 3 + k) * 3 + 1] = g;
+        colors[(t * 3 + k) * 3 + 2] = b;
+      }
+    }
+    geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  }
+  geom.computeVertexNormals();
+  return geom;
+}
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return [
+    parseInt(h.slice(0, 2), 16) / 255,
+    parseInt(h.slice(2, 4), 16) / 255,
+    parseInt(h.slice(4, 6), 16) / 255,
+  ];
+}
+
+async function load3MF(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const zip = await JSZip.loadAsync(await resp.arrayBuffer());
+
+  // Read filament palette
+  let palette = DEFAULT_PALETTE.slice();
+  const projCfg = zip.file('Metadata/project_settings.config');
+  if (projCfg) {
+    try {
+      const j = JSON.parse(await projCfg.async('string'));
+      if (Array.isArray(j.filament_colour) && j.filament_colour.length) {
+        palette = j.filament_colour;
+      }
+    } catch (e) { console.warn('project_settings parse failed:', e); }
+  }
+
+  // Read per-part extruder assignments. With the group-based 3MF structure,
+  // each <object> in model_settings.config is a GROUP containing one or more
+  // <part id="..."> children, and the extruder + name live on the PART, not
+  // the object. We key by part-id since the filename (object_11.model) maps
+  // to the part id.
+  const slotByPartId = {};
+  const nameByPartId = {};
+  const msCfg = zip.file('Metadata/model_settings.config');
+  if (msCfg) {
+    const doc = new DOMParser().parseFromString(await msCfg.async('string'), 'application/xml');
+    for (const part of doc.getElementsByTagName('part')) {
+      const pid = part.getAttribute('id');
+      for (const md of part.children) {
+        if (md.tagName === 'metadata') {
+          if (md.getAttribute('key') === 'extruder') slotByPartId[pid] = parseInt(md.getAttribute('value'));
+          if (md.getAttribute('key') === 'name') nameByPartId[pid] = md.getAttribute('value');
+        }
+      }
+    }
+    // Fallback: older flat-object files have extruder directly on <object>.
+    for (const obj of doc.getElementsByTagName('object')) {
+      const id = obj.getAttribute('id');
+      if (slotByPartId[id] !== undefined) continue;
+      for (const md of obj.children) {
+        if (md.tagName === 'metadata') {
+          if (md.getAttribute('key') === 'extruder') slotByPartId[id] = parseInt(md.getAttribute('value'));
+          if (md.getAttribute('key') === 'name') nameByPartId[id] = md.getAttribute('value');
+        }
+      }
+    }
+  }
+
+  // Build the per-object meshes. For paint_color (single-object) output, the
+  // geometry is inside 3D/Objects/object_*.model; slot 1 is the object's
+  // default extruder and per-triangle paint_color overrides that.
+  const group = new THREE.Group();
+  const objectFiles = Object.keys(zip.files).filter(n =>
+    n.startsWith('3D/Objects/') && n.endsWith('.model'));
+  // If single-file (no Objects/), read 3dmodel.model directly
+  const models = objectFiles.length ? objectFiles : ['3D/3dmodel.model'];
+
+  let totalTris = 0;
+  const partInfo = [];
+  for (const fname of models) {
+    const xml = await zip.file(fname).async('string');
+    const { verts, indices, paintCodes } = parseMeshXML(xml);
+    if (indices.length === 0) continue;
+
+    // Extract part id from filename (object_12.model -> "12")
+    const m = fname.match(/object_(\d+)\.model$/);
+    const partId = m ? m[1] : null;
+    const baseSlot = partId && slotByPartId[partId] ? slotByPartId[partId] : 1;
+    const baseColor = hexToRgb(palette[baseSlot - 1] || '#E8E8E8');
+
+    const perTri = [];
+    let colored = 0;
+    const triCount = indices.length / 3;
+    for (let t = 0; t < triCount; t++) {
+      const code = paintCodes[t];
+      if (code) {
+        // CONST_FILAMENTS[i] is the bitstream for AMS slot (i+1) in Bambu UI.
+        // So paint_color="4" (index 1) means AMS slot 2, palette[1].
+        const filIdx = CONST_FILAMENTS.indexOf(code);
+        if (filIdx >= 1) {
+          const amsSlot1Based = filIdx + 1;  // 1-based AMS slot
+          perTri.push(hexToRgb(palette[amsSlot1Based - 1] || '#FF00FF'));
+          colored++;
+          continue;
+        }
+      }
+      perTri.push(baseColor);
+    }
+
+    const geom = buildGeometry(verts, indices, perTri);
+    const material = new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.4, metalness: 0.1, flatShading: false,
+    });
+    const mesh = new THREE.Mesh(geom, material);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    group.add(mesh);
+
+    totalTris += triCount;
+    partInfo.push({
+      name: (partId && nameByPartId[partId]) || fname.split('/').pop(),
+      slot: baseSlot,
+      tris: triCount,
+      painted: colored,
+    });
+  }
+
+  group.rotation.x = -Math.PI / 2;
+  group.updateMatrixWorld(true);
+  scene.add(group);
+  const { size } = fitCameraToObject(group);
+
+  // Build the info HTML with palette swatches
+  const paletteHtml = palette.map((c, i) =>
+    `<span class="swatch" style="background:${c}"></span>slot ${i + 1}: ${c}`).join('<br>');
+  const partsHtml = partInfo.map(p =>
+    `${p.name} — slot ${p.slot}, ${p.tris} tris${p.painted ? ` (${p.painted} painted)` : ''}`).join('<br>');
+  setInfo(
+    `${url}<br>${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)} mm<br>` +
+    `${totalTris} triangles<br><br><b>Palette:</b><br>${paletteHtml}<br><br><b>Parts:</b><br>${partsHtml}`
+  );
+  window._stlLoaded = true;
+  window._stlSize = { x: size.x, y: size.y, z: size.z };
+  window._3mfParts = partInfo;
+  window._3mfPalette = palette;
+}
+
+if (file.toLowerCase().endsWith('.3mf')) {
+  load3MF(file).catch(e => setInfo('Error loading 3MF: ' + e.message));
+} else {
+  loadSTL(file);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Helper: rotate to specific view angles (callable from automation)
+window.setView = function(elev, azim) {
+  const dist = camera.position.length();
+  const elevRad = elev * Math.PI / 180;
+  const azimRad = azim * Math.PI / 180;
+  camera.position.set(
+    dist * Math.cos(elevRad) * Math.sin(azimRad),
+    dist * Math.sin(elevRad),
+    dist * Math.cos(elevRad) * Math.cos(azimRad)
+  );
+  controls.update();
+};
+</script>
+</body>
+</html>
