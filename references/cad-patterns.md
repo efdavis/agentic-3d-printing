@@ -698,3 +698,59 @@ def add_flared_base(cx, cy, z_base, inner_radius, outer_radius, flare_height, n=
 ```
 
 Use for: base of LiDAR turrets, mounting posts, any cylinder that should look like it grows out of a surface rather than sitting on top of it.
+
+---
+
+## build123d: Fluting / Reeding a Tapered Vessel (planters, vases, cups)
+
+Bake the flutes into the **2D loft profile**, not as 3D boolean cuts on the
+finished wall. The flutes then follow the wall taper automatically, the walls
+stay straight (ruled between matching profiles), and it's one cheap loft instead
+of dozens of slow 3D booleans on a slanted surface.
+
+```python
+from build123d import Plane, Pos, Rectangle, Circle, loft
+
+def fluted_profile(z, dims_fn, r, n_long, n_short, raised=True):
+    """dims_fn(z) -> (xmin, xmax, ymin, ymax) of the plain rect at height z."""
+    xmin, xmax, ymin, ymax = dims_fn(z)
+    cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
+    sk = Pos(cx, cy) * Rectangle(xmax - xmin, ymax - ymin)
+    pts = []
+    for i in range(n_long):          # window + room faces
+        x = xmin + (i + 0.5) / n_long * (xmax - xmin)
+        pts += [(x, ymin), (x, ymax)]
+    for i in range(n_short):         # end faces
+        y = ymin + (i + 0.5) / n_short * (ymax - ymin)
+        pts += [(xmin, y), (xmax, y)]
+    for px, py in pts:               # circle centered ON the edge = half-round
+        c = Pos(px, py) * Circle(r)
+        sk = sk + c if raised else sk - c
+    return Plane.XY.offset(z) * sk
+
+shell = loft([fluted_profile(0, dims, ...), fluted_profile(H, dims, ...)])
+```
+
+- **Circle centered exactly on the edge** → a clean half-round column (raised reed)
+  or scallop (recessed groove). `raised=True` adds material; `False` subtracts.
+- **Reeds vs grooves:** raised reeds (r≈5, ~9–10 per long face) read boldest and
+  hide FDM layer lines; recessed grooves (r≈2, ~24 per long face) are subtle/refined.
+  **Keep recessed depth < wall thickness** or you breach the cavity — raised reeds
+  have no such limit, so they're the safer bold choice.
+- **Cavity stays plain:** loft an un-fluted inset profile for the interior and
+  subtract. Constant wall thickness, flutes live only on the outside.
+- **Same flute count + fractional positions at base and top** → ruled loft keeps
+  walls straight. Spacing differs between base/top (different edge lengths); that's
+  fine, just avoid overlap at the *narrower* base (check dia < base spacing).
+
+**Gotcha — chamfer fails on fluted bottoms.** `chamfer(part.edges().group_by(Axis.Z)[0], ...)`
+throws `BRep_API: command not done` when reed arcs meet the floor in tangent edges.
+Don't model the elephant's-foot chamfer on a fluted body — use the slicer's
+elephant-foot compensation (Bambu Studio ~0.15mm) instead. Plain-walled bodies
+chamfer fine.
+
+**Grading the finish:** matplotlib's flat per-face shading makes flutes look like
+noise. Render in Blender headless (EEVEE Next) with a **raking side light** (low,
+~80° tilt, off to one side) so the columns cast shadow lines — that's the only way
+to judge flute depth/density by eye before printing. Use `shade_auto_smooth(~30°)`
+so flat box faces stay flat while the half-round reeds smooth out.
