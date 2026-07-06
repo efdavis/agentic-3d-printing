@@ -2,7 +2,7 @@
 
 Design print-ready 3D models by *describing them in plain language* to Claude Code, and get back parametric Python scripts that export clean, watertight STLs a slicer will accept without repair.
 
-This repo is the working setup behind that: a reusable Claude Code **skill** that encodes the whole workflow, a **CAD pattern cookbook** to copy from, a browser-based **STL self-review viewer**, and a handful of **worked examples** (a colorized dagger, a Loch Ness magnet set, planner stencils, a mini Roborock, a windowsill planter).
+This repo is the working setup behind that: a reusable Claude Code **skill** that encodes the whole workflow, a **CAD pattern cookbook** to copy from, a browser-based **STL self-review viewer**, and a handful of **worked examples** (a windowsill planter, planner stencils, a Loch Ness magnet set).
 
 The core idea: you don't open CAD software. You tell Claude what you want and the constraints it has to satisfy ("a windowsill trough planter, 190mm along the sill, window side vertical so it sits flush, 3mm walls, drainage holes"), and it writes a `build123d` script that produces the STL. You iterate in natural language until it's right, then slice and print.
 
@@ -76,8 +76,6 @@ Each folder is self-contained — build script(s), STL/3MF outputs, reference im
 |---|---|
 | `windowsill_planter/` | A flared, **reeded** trough planter built by lofting a 2D profile with rounded columns baked in so they follow the wall taper. Includes drainage holes, a catch tray, and a style-variant comparison (plain / grooves / ribs / reeds / faceted). Good first read for the `build123d` loft technique. |
 | `planner_stencil/` | Flat functional parts — checkbox squares + droplet cutouts, with a wide variant. Shows text/cutout patterns and the 2.0mm plate-thickness lesson. |
-| `roborock/` | A miniature replica — mapping a real object's features to construction primitives at small scale. |
-| `maxs_dagger/` | **Multi-color** work: per-extruder colorized 3MFs for the Bambu AMS, image-reference region painting, and a closed-loop color-refinement pipeline. The deep end. |
 | `nessie/` | A Blender-built magnet set assembled from AI-generated (Rodin) mesh pieces, with a phased-loop build process. Also documents a failed autonomous run — see `FINDINGS_*.md` for what *not* to repeat. |
 
 ---

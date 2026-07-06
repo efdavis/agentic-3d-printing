@@ -11,3 +11,7 @@ __pycache__/
 # Claude Code local settings
 .claude/settings.local.json
 .claude/worktrees/
+
+# Unpublished local projects (kept local, not for the public repo)
+maxs_dagger/
+roborock/
